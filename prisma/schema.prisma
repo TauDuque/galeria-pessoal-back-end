@@ -11,11 +11,29 @@ datasource db {
 }
 
 model User {
-  id        Int      @id @default(autoincrement())
+  id        Int       @id @default(autoincrement())
   name      String
-  email     String   @unique
+  email     String    @unique
   password  String
-  createdAt DateTime @default(now()) @map("created_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  artworks  Artwork[]
 
   @@map("users")
+}
+
+model Artwork {
+  id          Int      @id @default(autoincrement())
+  metId       Int      @unique // ID da obra no The Met
+  title       String
+  artist      String?
+  department  String?
+  culture     String?
+  period      String?
+  imageUrl    String?  @map("image_url")
+  metUrl      String?  @map("met_url")
+  userId      Int      @map("user_id")
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("artworks")
 }
