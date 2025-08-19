@@ -4,9 +4,9 @@
     "description": "Backend para o projeto Galeria de Arte Pessoal",
     "main": "dist/server.js",
     "scripts": {
-        "start": "node src/server.js",
-        "build": "npx prisma generate && npx prisma migrate deploy",
-        "dev": "nodemon src/server.js",
+        "build": "tsc && npx prisma generate && npx prisma migrate deploy",
+        "start": "node dist/server.js",
+        "dev": "nodemon src/server.ts",
         "watch-ts": "tsc -w"
     },
     "dependencies": {
