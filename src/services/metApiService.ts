@@ -24,6 +24,21 @@ interface ArtworkDetails {
   metUrl?: string;
 }
 
+// Tipos personalizados para tratamento de erros
+export class ArtworkNotFoundError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ArtworkNotFoundError";
+  }
+}
+
+export class MetApiError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "MetApiError";
+  }
+}
+
 const MET_API_BASE = "https://collectionapi.metmuseum.org/public/collection/v1";
 
 export const searchArtworks = async (
@@ -31,19 +46,50 @@ export const searchArtworks = async (
   limit: number = 20
 ): Promise<number[]> => {
   try {
-    const response = await fetch(
-      `${MET_API_BASE}/search?q=${encodeURIComponent(query)}`
-    );
+    // Construir a URL de busca com todos os parâmetros
+    const searchUrl = new URL(`${MET_API_BASE}/search`);
+
+    // Se a query contém filtros específicos (ex: "artist:Van Gogh"), usar como parâmetro 'q'
+    if (query.includes(":")) {
+      searchUrl.searchParams.set("q", query);
+    } else {
+      // Query simples, usar como parâmetro 'q'
+      searchUrl.searchParams.set("q", query);
+    }
+
+    console.log(`Fazendo busca na API do Met: ${searchUrl.toString()}`);
+
+    const response = await fetch(searchUrl.toString());
 
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      // Se a API retornar erro HTTP, é um problema real da API
+      throw new MetApiError(
+        `Erro na API do Met: ${response.status} - ${response.statusText}`
+      );
     }
 
     const data = (await response.json()) as MetSearchResponse;
-    return data.objectIDs?.slice(0, limit) || [];
+
+    if (!data.objectIDs || data.objectIDs.length === 0) {
+      console.log(`Nenhuma obra encontrada para a query: ${query}`);
+      // Não é um erro, apenas não encontrou resultados
+      throw new ArtworkNotFoundError(`Nenhuma obra encontrada para: ${query}`);
+    }
+
+    console.log(
+      `Encontradas ${data.objectIDs.length} obras para a query: ${query}`
+    );
+
+    return data.objectIDs.slice(0, limit);
   } catch (error) {
+    // Se já é um erro personalizado, apenas repassar
+    if (error instanceof ArtworkNotFoundError || error instanceof MetApiError) {
+      throw error;
+    }
+
+    // Se for outro tipo de erro (rede, JSON, etc.), é um erro real
     console.error("Erro ao buscar obras:", error);
-    throw new Error("Falha ao buscar obras de arte");
+    throw new MetApiError("Falha na comunicação com a API do Met");
   }
 };
 
@@ -54,7 +100,10 @@ export const getArtworkDetails = async (
     const response = await fetch(`${MET_API_BASE}/objects/${metId}`);
 
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      // Se a API retornar erro HTTP, é um problema real da API
+      throw new MetApiError(
+        `Erro na API do Met: ${response.status} - ${response.statusText}`
+      );
     }
 
     const data = (await response.json()) as MetArtworkResponse;
@@ -69,8 +118,14 @@ export const getArtworkDetails = async (
       metUrl: data.objectURL,
     };
   } catch (error) {
+    // Se já é um erro personalizado, apenas repassar
+    if (error instanceof MetApiError) {
+      throw error;
+    }
+
+    // Se for outro tipo de erro (rede, JSON, etc.), é um erro real
     console.error(`Erro ao buscar detalhes da obra ${metId}:`, error);
-    throw new Error("Falha ao buscar detalhes da obra de arte");
+    throw new MetApiError("Falha na comunicação com a API do Met");
   }
 };
 

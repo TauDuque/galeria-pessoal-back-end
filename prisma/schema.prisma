@@ -17,6 +17,7 @@ model User {
   password  String
   createdAt DateTime  @default(now()) @map("created_at")
   artworks  Artwork[]
+  favorites Favorite[]
 
   @@map("users")
 }
@@ -36,4 +37,15 @@ model Artwork {
   createdAt   DateTime @default(now()) @map("created_at")
 
   @@map("artworks")
+}
+
+model Favorite {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  metId     Int      @map("met_id") // ID da obra no The Met
+  createdAt DateTime @default(now()) @map("created_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, metId])
+  @@map("favorites")
 }

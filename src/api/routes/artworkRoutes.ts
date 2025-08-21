@@ -4,16 +4,15 @@ import { authenticateToken } from "../middlewares/authMiddleware";
 
 const router = Router();
 
-// Rota pública para buscar obras
+// Rotas públicas
+router.get("/", artworkController.getAllArtworks);
 router.get("/search", artworkController.searchArt);
+router.get("/classics", artworkController.getClassicArtworks);
+router.get("/:id", artworkController.getArtworkById);
 
 // Rotas protegidas que requerem autenticação
 router.post("/save", authenticateToken, artworkController.saveArtwork);
-router.get(
-  "/my-collection",
-  authenticateToken,
-  artworkController.getUserArtworks
-);
+router.get("/user", authenticateToken, artworkController.getUserArtworks);
 router.delete(
   "/:artworkId",
   authenticateToken,
