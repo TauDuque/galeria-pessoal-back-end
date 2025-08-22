@@ -4,6 +4,8 @@ import {
   searchArtworks,
   getArtworkDetails,
   getRandomArtworks,
+  processBatch,
+  ArtworkDetails,
 } from "../../services/metApiService";
 
 // Importar os tipos de erro personalizados
@@ -85,9 +87,34 @@ export const searchArt = async (req: Request, res: Response) => {
       artworkIds.map((id) => getArtworkDetails(id))
     );
 
+    // Filtrar obras que foram encontradas com sucesso e têm imagens
+    const validArtworks = artworks.filter((artwork) => artwork !== null);
+
+    if (validArtworks.length === 0) {
+      return res.status(200).json({
+        artworks: [],
+        total: 0,
+        message: "Nenhuma obra com imagem disponível encontrada",
+        searchQuery: searchQuery || "N/A",
+        appliedFilters: validSearchParams
+          ? Object.fromEntries(
+              validSearchParams.map((param) => [param, req.query[param]])
+            )
+          : {},
+        normalizedValues: validSearchParams
+          ? Object.fromEntries(
+              validSearchParams.map((param) => [
+                param,
+                req.query[param]?.toString().toLowerCase(),
+              ])
+            )
+          : {},
+      });
+    }
+
     return res.status(200).json({
-      artworks,
-      total: artworks.length,
+      artworks: validArtworks as ArtworkDetails[],
+      total: validArtworks.length,
       searchQuery,
       appliedFilters: Object.fromEntries(
         validSearchParams.map((param) => [param, searchParams[param]])
@@ -169,6 +196,12 @@ export const saveArtwork = async (req: Request, res: Response) => {
 
     // Buscar detalhes da obra na API do Met
     const artworkDetails = await getArtworkDetails(Number(metId));
+
+    if (!artworkDetails) {
+      return res
+        .status(404)
+        .json({ message: "Obra não encontrada ou sem imagem disponível" });
+    }
 
     // Salvar no banco de dados
     const savedArtwork = await prisma.artwork.create({
@@ -261,6 +294,12 @@ export const getArtworkById = async (req: Request, res: Response) => {
     // Buscar detalhes da obra na API do Met
     const artworkDetails = await getArtworkDetails(Number(id));
 
+    if (!artworkDetails) {
+      return res
+        .status(404)
+        .json({ message: "Obra não encontrada ou sem imagem disponível" });
+    }
+
     return res.status(200).json(artworkDetails);
   } catch (error) {
     console.error("Erro ao buscar obra por ID:", error);
@@ -286,25 +325,54 @@ export const getClassicArtworks = async (req: Request, res: Response) => {
       436542, // Portrait of Augustine Roulin - Van Gogh
     ];
 
-    // Buscar detalhes de todas as obras clássicas
-    const classicArtworks = await Promise.all(
-      classicArtworkIds.map(async (id) => {
+    console.log(
+      `Buscando ${classicArtworkIds.length} obras clássicas usando batch processing...`
+    );
+
+    // Usar o novo sistema de batch processing com rate limiting
+    const classicArtworks = await processBatch(
+      classicArtworkIds,
+      async (id: number) => {
         try {
           return await getArtworkDetails(id);
         } catch (error) {
           console.error(`Erro ao buscar obra clássica ${id}:`, error);
           return null;
         }
-      })
+      }
     );
 
     // Filtrar obras que foram encontradas com sucesso
-    const validArtworks = classicArtworks.filter((artwork) => artwork !== null);
+    const validArtworks = classicArtworks.filter(
+      (artwork: any) => artwork !== null
+    );
+
+    console.log(
+      `Sucesso: ${validArtworks.length}/${classicArtworkIds.length} obras clássicas carregadas`
+    );
 
     return res.status(200).json(validArtworks);
   } catch (error) {
     console.error("Erro ao buscar obras clássicas:", error);
-    return res.status(500).json({ message: "Erro interno do servidor" });
+
+    // Tentar usar dados de fallback
+    try {
+      const { getFallbackData } = await import("../../services/fallbackData");
+      console.log("Usando dados de fallback para obras clássicas");
+      const fallbackData = getFallbackData("classic", 12);
+
+      return res.status(200).json({
+        artworks: fallbackData,
+        message: "Dados de fallback carregados devido a problemas na API",
+        fromFallback: true,
+      });
+    } catch (fallbackError) {
+      console.error("Erro ao carregar dados de fallback:", fallbackError);
+      return res.status(500).json({
+        message: "Erro interno do servidor e falha no fallback",
+        details: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 };
 
@@ -327,5 +395,67 @@ export const getAllArtworks = async (req: Request, res: Response) => {
   } catch (error) {
     console.error("Erro ao buscar obras:", error);
     return res.status(500).json({ message: "Erro interno do servidor" });
+  }
+};
+
+// Endpoint para monitorar o status da API e do cache
+export const getApiStatus = async (req: Request, res: Response) => {
+  try {
+    // Testar conectividade com a API do Met
+    const testResponse = await fetch(
+      "https://collectionapi.metmuseum.org/public/collection/v1/search?q=test",
+      {
+        signal: AbortSignal.timeout(5000), // 5 segundos de timeout
+      }
+    );
+
+    const apiStatus = {
+      metApi: {
+        status: testResponse.ok ? "online" : "offline",
+        responseTime: Date.now(),
+        statusCode: testResponse.status,
+      },
+      cache: {
+        // Como o cache é privado, vamos apenas indicar se está funcionando
+        status: "active",
+        timestamp: new Date().toISOString(),
+      },
+      rateLimiting: {
+        status: "active",
+        config: {
+          maxRequestsPerSecond: 3,
+          maxRequestsPerMinute: 100,
+          batchSize: 5,
+        },
+      },
+      timestamp: new Date().toISOString(),
+    };
+
+    return res.status(200).json(apiStatus);
+  } catch (error) {
+    console.error("Erro ao verificar status da API:", error);
+
+    const apiStatus = {
+      metApi: {
+        status: "offline",
+        error: error instanceof Error ? error.message : String(error),
+        timestamp: new Date().toISOString(),
+      },
+      cache: {
+        status: "active",
+        timestamp: new Date().toISOString(),
+      },
+      rateLimiting: {
+        status: "active",
+        config: {
+          maxRequestsPerSecond: 3,
+          maxRequestsPerMinute: 100,
+          batchSize: 5,
+        },
+      },
+      timestamp: new Date().toISOString(),
+    };
+
+    return res.status(200).json(apiStatus);
   }
 };

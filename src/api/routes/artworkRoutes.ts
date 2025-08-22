@@ -8,6 +8,7 @@ const router = Router();
 router.get("/", artworkController.getAllArtworks);
 router.get("/search", artworkController.searchArt);
 router.get("/classics", artworkController.getClassicArtworks);
+router.get("/status", artworkController.getApiStatus);
 router.get("/:id", artworkController.getArtworkById);
 
 // Rotas protegidas que requerem autenticação

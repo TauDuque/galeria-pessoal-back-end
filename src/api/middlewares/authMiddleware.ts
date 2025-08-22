@@ -9,18 +9,36 @@ export const authenticateToken = async (
   next: NextFunction
 ) => {
   try {
+    console.log("🔐 authenticateToken - Headers:", req.headers);
+    console.log(
+      "🔐 authenticateToken - Authorization header:",
+      req.headers.authorization
+    );
+
     const authHeader = req.headers.authorization;
     const token = authHeader && authHeader.split(" ")[1]; // Bearer TOKEN
 
+    console.log(
+      "🔐 authenticateToken - Token extraído:",
+      token ? `${token.substring(0, 10)}...` : "null"
+    );
+
     if (!token) {
+      console.log("❌ authenticateToken - Token não fornecido");
       return res.status(401).json({ message: "Token de acesso requerido" });
     }
+
+    console.log("🔐 authenticateToken - Verificando token...");
 
     // Verificar o token
     const decoded = jwt.verify(
       token,
       process.env.JWT_SECRET || "default_secret"
     ) as JWTPayload;
+
+    console.log("🔐 authenticateToken - Token decodificado:", decoded);
+
+    console.log("🔐 authenticateToken - Buscando usuário no banco...");
 
     // Buscar o usuário no banco
     const user = await prisma.user.findUnique({
@@ -33,7 +51,10 @@ export const authenticateToken = async (
       },
     });
 
+    console.log("🔐 authenticateToken - Usuário encontrado:", user);
+
     if (!user) {
+      console.log("❌ authenticateToken - Usuário não encontrado no banco");
       return res.status(404).json({ message: "Usuário não encontrado" });
     }
 

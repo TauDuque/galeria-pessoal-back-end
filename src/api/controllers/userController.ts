@@ -36,7 +36,18 @@ export const register = async (
       },
     });
 
-    return res.status(201).json(user);
+    // Gerar token JWT para o usuário recém-criado
+    const token = jwt.sign(
+      { userId: user.id },
+      process.env.JWT_SECRET || "default_secret",
+      { expiresIn: "24h" }
+    );
+
+    // Retornar usuário e token
+    return res.status(201).json({
+      user,
+      token,
+    });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
       if (

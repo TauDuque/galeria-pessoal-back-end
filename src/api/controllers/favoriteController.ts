@@ -1,20 +1,28 @@
 import { Request, Response } from "express";
 import prisma from "../../config/prismaClient";
 import { getArtworkDetails } from "../../services/metApiService";
-import "../../@types/auth";
 
 export const addFavorite = async (req: Request, res: Response) => {
   try {
+    console.log("🔍 addFavorite - Request body:", req.body);
+    console.log("🔍 addFavorite - User:", req.user);
+
     const { metId } = req.body;
     const userId = req.user?.id;
 
+    console.log("🔍 addFavorite - metId:", metId, "userId:", userId);
+
     if (!metId) {
+      console.log("❌ addFavorite - metId não fornecido");
       return res.status(400).json({ message: "ID da obra é obrigatório" });
     }
 
     if (!userId) {
+      console.log("❌ addFavorite - Usuário não autenticado");
       return res.status(401).json({ message: "Usuário não autenticado" });
     }
+
+    console.log("🔍 addFavorite - Verificando se já existe favorito...");
 
     // Verificar se o usuário já favoritou esta obra
     const existingFavorite = await prisma.favorite.findFirst({
@@ -24,14 +32,23 @@ export const addFavorite = async (req: Request, res: Response) => {
       },
     });
 
+    console.log("🔍 addFavorite - Favorito existente:", existingFavorite);
+
     if (existingFavorite) {
+      console.log("❌ addFavorite - Obra já está nos favoritos");
       return res
         .status(409)
         .json({ message: "Obra já está nos seus favoritos" });
     }
 
+    console.log("🔍 addFavorite - Buscando detalhes da obra...");
+
     // Buscar detalhes da obra na API do Met
     const artworkDetails = await getArtworkDetails(Number(metId));
+
+    console.log("🔍 addFavorite - Detalhes da obra:", artworkDetails);
+
+    console.log("🔍 addFavorite - Salvando nos favoritos...");
 
     // Salvar nos favoritos
     const favorite = await prisma.favorite.create({
@@ -40,6 +57,8 @@ export const addFavorite = async (req: Request, res: Response) => {
         userId: userId,
       },
     });
+
+    console.log("✅ addFavorite - Favorito criado:", favorite);
 
     return res.status(201).json({
       id: favorite.id,
